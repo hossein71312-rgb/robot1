@@ -1,5 +1,7 @@
 import pandas as pd
 
+SESSION = (7, 17)  # ساعت UTC: لندن + نیویورک
+
 def atr(df, n=14):
     pc = df.close.shift()
     tr = pd.concat([df.high - df.low, (df.high - pc).abs(),
@@ -47,34 +49,42 @@ def zones_1h(df, d):
     return out
 
 def entry_5m(df, d, zones, rr=2.0):
-    """لمس ناحیه + Liquidity Sweep + CHoCH"""
+    """سوئیپ نقدینگی (با فتیله و برگشت) داخل ناحیه + شکست ساختار CHoCH"""
     d5 = df.tail(40).reset_index(drop=True)
+    n = len(d5)
     rec, prior = d5.tail(10), d5.iloc[:-10]
-    z = next((z for z in zones if rec.low.min() <= z[1] and rec.high.max() >= z[0]), None)
-    if z is None: return None
     a = atr(d5).iloc[-1]
     last = d5.iloc[-1]
     if d == 1:
-        if not rec.low.min() < prior.tail(20).low.min(): return None
-        k = rec.low.idxmin()
-        if k >= len(d5) - 1 or not last.close > d5.high[max(0, k - 3):k + 1].max(): return None
-        sl = rec.low.min() - 0.1 * a
+        lvl = prior.tail(20).low.min()
+        k = int(rec.low.idxmin())
+        if not (k < n - 1 and d5.low[k] < lvl and d5.close[k] > lvl): return None
+        z = next((z for z in zones if z[0] - a <= d5.low[k] <= z[1]), None)
+        if z is None: return None
+        ref = d5.high[max(0, k - 3):n - 1].max()
+        if not last.close > ref: return None
+        sl = d5.low[k] - 0.1 * a
         risk = last.close - sl
         if risk <= 0 or risk > 3 * a: return None
         return dict(side="BUY", entry=last.close, sl=sl, tp=last.close + rr * risk, zone=z[2], rr=rr)
     else:
-        if not rec.high.max() > prior.tail(20).high.max(): return None
-        k = rec.high.idxmax()
-        if k >= len(d5) - 1 or not last.close < d5.low[max(0, k - 3):k + 1].min(): return None
-        sl = rec.high.max() + 0.1 * a
+        lvl = prior.tail(20).high.max()
+        k = int(rec.high.idxmax())
+        if not (k < n - 1 and d5.high[k] > lvl and d5.close[k] < lvl): return None
+        z = next((z for z in zones if z[0] <= d5.high[k] <= z[1] + a), None)
+        if z is None: return None
+        ref = d5.low[max(0, k - 3):n - 1].min()
+        if not last.close < ref: return None
+        sl = d5.high[k] + 0.1 * a
         risk = sl - last.close
         if risk <= 0 or risk > 3 * a: return None
         return dict(side="SELL", entry=last.close, sl=sl, tp=last.close - rr * risk, zone=z[2], rr=rr)
 
-def signal(df4, df1, df5):
+def signal(df4, df1, df5, rr=2.0):
     if len(df4) < 20 or len(df1) < 60 or len(df5) < 40: return None
-    d = trend_4h(df4)
+    if not (SESSION[0] <= df5.time.iloc[-1].hour < SESSION[1]): return None
+    d = trend_4h(df4.tail(60))
     if d == 0: return None
     zs = zones_1h(df1, d)
     if not zs: return None
-    return entry_5m(df5, d, zs)
+    return entry_5m(df5, d, zs, rr)
