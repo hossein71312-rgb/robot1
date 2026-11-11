@@ -1,4 +1,7 @@
 import pandas as pd
+from collections import Counter
+
+STATS = Counter()
 
 SESSION = (7, 17)  # ساعت UTC: لندن + نیویورک
 
@@ -17,12 +20,13 @@ def swings(df, n):
     return sh, sl
 
 def trend_4h(df):
-    """1=صعودی (HH+HL)  -1=نزولی (LH+LL)  0=نامشخص"""
+    """1=صعودی (کف بالاتر و ساختار سالم)  -1=نزولی  0=نامشخص"""
     sh, sl = swings(df, 2)
     if len(sh) < 2 or len(sl) < 2: return 0
-    if sh[-1][1] > sh[-2][1] and sl[-1][1] > sl[-2][1]: return 1
-    if sh[-1][1] < sh[-2][1] and sl[-1][1] < sl[-2][1]: return -1
-    return 0
+    c = df.close.iloc[-1]
+    bull = sl[-1][1] > sl[-2][1] and c > sl[-1][1]
+    bear = sh[-1][1] < sh[-2][1] and c < sh[-1][1]
+    return 1 if bull and not bear else -1 if bear and not bull else 0
 
 def zones_1h(df, d):
     """FVG و Order Block حل‌نشده، فقط در Discount (خرید) یا Premium (فروش)"""
@@ -59,10 +63,13 @@ def entry_5m(df, d, zones, rr=2.0):
         lvl = prior.tail(20).low.min()
         k = int(rec.low.idxmin())
         if not (k < n - 1 and d5.low[k] < lvl and d5.close[k] > lvl): return None
-        z = next((z for z in zones if z[0] - a <= d5.low[k] <= z[1]), None)
+        STATS["سوئیپ"] += 1
+        z = next((z for z in zones if z[0] - a <= d5.low[k] <= z[1] + a), None)
         if z is None: return None
-        ref = d5.high[max(0, k - 3):n - 1].max()
+        STATS["داخل ناحیه"] += 1
+        ref = d5.high[k:n - 1].max()
         if not last.close > ref: return None
+        STATS["CHoCH"] += 1
         sl = d5.low[k] - 0.1 * a
         risk = last.close - sl
         if risk <= 0 or risk > 3 * a: return None
@@ -71,10 +78,13 @@ def entry_5m(df, d, zones, rr=2.0):
         lvl = prior.tail(20).high.max()
         k = int(rec.high.idxmax())
         if not (k < n - 1 and d5.high[k] > lvl and d5.close[k] < lvl): return None
-        z = next((z for z in zones if z[0] <= d5.high[k] <= z[1] + a), None)
+        STATS["سوئیپ"] += 1
+        z = next((z for z in zones if z[0] - a <= d5.high[k] <= z[1] + a), None)
         if z is None: return None
-        ref = d5.low[max(0, k - 3):n - 1].min()
+        STATS["داخل ناحیه"] += 1
+        ref = d5.low[k:n - 1].min()
         if not last.close < ref: return None
+        STATS["CHoCH"] += 1
         sl = d5.high[k] + 0.1 * a
         risk = sl - last.close
         if risk <= 0 or risk > 3 * a: return None
@@ -83,8 +93,11 @@ def entry_5m(df, d, zones, rr=2.0):
 def signal(df4, df1, df5, rr=2.0):
     if len(df4) < 20 or len(df1) < 60 or len(df5) < 40: return None
     if not (SESSION[0] <= df5.time.iloc[-1].hour < SESSION[1]): return None
+    STATS["کندل در سشن"] += 1
     d = trend_4h(df4.tail(60))
     if d == 0: return None
+    STATS["روند مشخص"] += 1
     zs = zones_1h(df1, d)
     if not zs: return None
+    STATS["ناحیه دارد"] += 1
     return entry_5m(df5, d, zs, rr)
