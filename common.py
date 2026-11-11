@@ -1,4 +1,4 @@
-import os, requests, pandas as pd
+import os, time, requests, pandas as pd
 
 TD_KEY = os.environ.get("TD_KEY", "")
 TG_TOKEN = os.environ.get("TG_TOKEN", "")
@@ -20,6 +20,7 @@ def fetch(interval, size, symbol="XAU/USD"):
         size -= n
         end = r["values"][-1]["datetime"]
         if len(r["values"]) < n: break
+        if size > 0: time.sleep(8)  # محدودیت ۸ درخواست در دقیقه
     df = pd.DataFrame(out)
     df["time"] = pd.to_datetime(df["datetime"])
     for c in ["open", "high", "low", "close"]:
