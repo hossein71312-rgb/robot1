@@ -1,6 +1,6 @@
 import numpy as np, pandas as pd
 from common import fetch
-from strategy import signal, SESSION
+from strategy import signal, SESSION, STATS
 
 df5 = fetch("5min", 15000).reset_index(drop=True)
 print("کندل‌ها:", len(df5), df5.time.iloc[0], "تا", df5.time.iloc[-1])
@@ -46,6 +46,10 @@ def sim(rr):
         if r is None: break
         res.append((s, r, tp)); busy = j
     return res
+
+print("\nقیف فیلترها (تعداد کندل‌هایی که از هر مرحله رد شدند):")
+for k, v in STATS.items(): print(" ", k, v)
+print("  سیگنال نهایی", len(sigs))
 
 print("\nنتیجه برای نسبت‌های مختلف ریسک به ریوارد:")
 for rr in (1, 1.5, 2, 3):
